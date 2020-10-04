@@ -32,37 +32,37 @@ impl Item {
         let column_seperator: String = repeat(' ')
                                            .take(line_format.colsep)
                                            .collect();
-        try!(write!(output,
+        write!(output,
                     "{}",
-                    format_field(&self.id.to_string(), line_format.id_width, false)));
-        try!(write!(output, "{}", column_seperator));
+                    format_field(&self.id.to_string(), line_format.id_width, false))?;
+        write!(output, "{}", column_seperator)?;
         if !self.body.is_empty() && !search_body {
-            try!(write!(output,
+            write!(output,
                         "{}",
-                        format_field(&self.title, line_format.title_width - 4, true)));
-            try!(write!(output, "{}", format_field(&" (+)".to_string(), 4, false)));
+                        format_field(&self.title, line_format.title_width - 4, true))?;
+            write!(output, "{}", format_field(&" (+)".to_string(), 4, false))?;
         } else {
-            try!(write!(output,
+            write!(output,
                         "{}",
-                        format_field(&self.title, line_format.title_width, true)));
+                        format_field(&self.title, line_format.title_width, true))?;
         }
-        try!(write!(output, "{}", column_seperator));
+        write!(output, "{}", column_seperator)?;
         if line_format.status_width != 0 {
-            try!(write!(output,
+            write!(output,
                         "{}",
                         format_field(&format!("{:?}", self.status),
                                      line_format.status_width,
-                                     false)));
-            try!(write!(output, "{}", column_seperator));
+                                     false))?;
+            write!(output, "{}", column_seperator)?;
         }
-        try!(writeln!(output,
+        writeln!(output,
                       "{}",
-                      format_field(&try!(localize_last_touched_string(&*self.last_touched)),
+                      format_field(&localize_last_touched_string(&*self.last_touched)?,
                                    line_format.touched_width,
-                                   false)));
+                                   false))?;
         if search_body {
             for l in self.body.lines() {
-                try!(writeln!(output, "\t{}", l));
+                writeln!(output, "\t{}", l)?;
             }
         }
         Ok(())

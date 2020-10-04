@@ -24,18 +24,19 @@ extern crate crypto;
 extern crate term;
 extern crate rand;
 extern crate tempdir;
+extern crate serde;
 
 // std lib imports
 use std::env;
 use std::default::Default;
 
 // theca imports
-use utils::{find_profile_folder, get_password, profiles_in_folder, profile_fingerprint,
-            extract_status};
+use utils::{find_profile_folder, get_password, profiles_in_folder, extract_status};
 use errors::Result;
 
 pub use self::libc::{STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
 pub use profile::Profile;
+pub use serde::Deserialize;
 
 #[macro_use]pub mod errors;
 pub mod profile;
@@ -50,7 +51,7 @@ pub fn version() -> String {
 }
 
 /// theca docopt argument struct
-#[derive(RustcDecodable, Clone)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Args {
     pub cmd_add: bool,
     pub cmd_clear: bool,
@@ -154,7 +155,7 @@ pub fn setup_args(args: &mut Args) -> Result<()> {
 
     // if profile is encrypted try to set the key
     if args.flag_encrypted && args.flag_key.is_empty() {
-        args.flag_key = try!(get_password());
+        args.flag_key = get_password()?;
     }
 
     // if no profile is provided via cmd line or env set it to default
@@ -167,7 +168,7 @@ pub fn setup_args(args: &mut Args) -> Result<()> {
 }
 
 pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &u64) -> Result<()> {
-    let status = try!(extract_status(args.flag_none, args.flag_started, args.flag_urgent));
+    let status = extract_status(args.flag_none, args.flag_started, args.flag_urgent)?;
     let flags = BoolFlags::from_args(args);
 
     if [args.cmd_add,
@@ -182,22 +183,22 @@ pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &
            .any(|c| c == &true) {
         // add
         if args.cmd_add {
-            try!(profile.add_note(&args.arg_title,
+            profile.add_note(&args.arg_title,
                                   &args.flag_body,
                                   status,
                                   args.cmd__,
                                   args.flag_editor,
-                                  true));
+                                  true)?;
         }
 
         // edit
         if args.cmd_edit {
-            try!(profile.edit_note(args.arg_id[0],
+            profile.edit_note(args.arg_id[0],
                                    &args.arg_title,
                                    &args.flag_body,
                                    status,
                                    args.cmd__,
-                                   flags));
+                                   flags)?;
         }
 
         // delete
@@ -208,12 +209,12 @@ pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &
         // transfer
         if args.cmd_transfer {
             // transfer a note
-            try!(profile.transfer_note(args));
+            profile.transfer_note(args)?;
         }
 
         // clear
         if args.cmd_clear {
-            try!(profile.clear(args.flag_yes));
+            profile.clear(args.flag_yes)?;
         }
 
         // decrypt profile
@@ -230,7 +231,7 @@ pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &
         if args.cmd_encrypt_profile {
             // get the new key
             if args.flag_new_key.is_empty() {
-                args.flag_new_key = try!(get_password());
+                args.flag_new_key = get_password()?;
             }
 
             // set args.key and args.encrypted
@@ -250,13 +251,13 @@ pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &
             println!("creating profile '{}'", args.arg_name[0]);
         }
 
-        try!(profile.save_to_file(args, profile_fingerprint));
+        profile.save_to_file(args, profile_fingerprint)?;
     } else if !args.arg_id.is_empty() {
-        try!(profile.view_note(args.arg_id[0], args.flag_json, args.flag_condensed));
+        profile.view_note(args.arg_id[0], args.flag_json, args.flag_condensed)?;
     } else if args.cmd_search {
-        try!(profile.search_notes(&args.arg_pattern, args.flag_limit, flags, status));
+        profile.search_notes(&args.arg_pattern, args.flag_limit, flags, status)?;
     } else if args.cmd_info {
-        try!(profile.stats(&args.flag_profile));
+        profile.stats(&args.flag_profile)?;
     } else if args.cmd_import {
         // reverse(?) transfer a note
         let mut from_args = args.clone();
@@ -265,21 +266,21 @@ pub fn parse_cmds(profile: &mut Profile, args: &mut Args, profile_fingerprint: &
         from_args.flag_profile = args.arg_name[0].clone();
         from_args.arg_name[0] = args.flag_profile.clone();
 
-        let (mut from_profile, from_fingerprint) = try!(Profile::new(
+        let (mut from_profile, from_fingerprint) = Profile::new(
                 &from_args.flag_profile,
                 &from_args.flag_profile_folder,
                 &from_args.flag_key,
                 from_args.cmd_new_profile,
                 from_args.flag_encrypted,
                 from_args.flag_yes
-            ));
+            )?;
 
-        try!(parse_cmds(&mut from_profile, &mut from_args, &from_fingerprint));
+        parse_cmds(&mut from_profile, &mut from_args, &from_fingerprint)?;
     } else if args.cmd_list_profiles {
-        let profile_path = try!(find_profile_folder(&args.flag_profile_folder));
-        try!(profiles_in_folder(&profile_path));
+        let profile_path = find_profile_folder(&args.flag_profile_folder)?;
+        profiles_in_folder(&profile_path)?;
     } else if args.arg_id.is_empty() {
-        try!(profile.list_notes(args.flag_limit, flags, status));
+        profile.list_notes(args.flag_limit, flags, status)?;
     }
 
     Ok(())
@@ -300,20 +301,22 @@ mod tests {
 
     #[test]
     fn test_write_item__no_search_non_empty_body() {
+        //Date without DST
         let item = Item {
             id: 0,
             title: "This is a title".into(),
             status: Status::Blank,
             body: "This is the body".into(),
-            last_touched: "2016-07-08 15:31:14 -0800".into(),
+            last_touched: "2016-01-08 15:31:14 -0800".into(),
         };
         assert_eq!(write_item_test_case(item, false),
-                   "0   This is a title (+)  2016-07-08 16:31:14\n");
+                   "0   This is a title (+)  2016-01-08 18:31:14\n");
     }
 
     #[test]
     fn test_write_item__no_search_empty_body() {
         // no search && empty body
+        //Date with DST
         let item = Item {
             id: 0,
             title: "This is a title".into(),
@@ -322,7 +325,7 @@ mod tests {
             last_touched: "2016-07-08 15:31:14 -0800".into(),
         };
         assert_eq!(write_item_test_case(item, false),
-                   "0   This is a title  2016-07-08 16:31:14\n");
+                   "0   This is a title  2016-07-08 19:31:14\n");
     }
 
     #[test]
@@ -335,7 +338,7 @@ mod tests {
             last_touched: "2016-07-08 15:31:14 -0800".into(),
         };
         assert_eq!(write_item_test_case(item, true),
-                   "0   This is a title      2016-07-08 16:31:14\n\tThis is the body\n\tit has \
+                   "0   This is a title      2016-07-08 19:31:14\n\tThis is the body\n\tit has \
                     multiple lines\n");
     }
 
@@ -350,7 +353,7 @@ mod tests {
             last_touched: "2016-07-08 15:31:14 -0800".into(),
         };
         assert_eq!(write_item_test_case(item, true),
-                   "0   This is a title  2016-07-08 16:31:14\n");
+                   "0   This is a title  2016-07-08 19:31:14\n");
     }
 
     #[test]
@@ -363,7 +366,7 @@ mod tests {
             last_touched: "2016-07-08 15:31:14 -0800".into(),
         };
         assert_eq!(write_item_test_case(item, false),
-                   "0   This is a title (+)  Started  2016-07-08 16:31:14\n");
+                   "0   This is a title (+)  Started  2016-07-08 19:31:14\n");
 
     }
 }

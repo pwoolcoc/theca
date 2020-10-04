@@ -49,7 +49,7 @@ impl StdError for Error {
         &self.desc
     }
 
-    fn cause(&self) -> Option<&StdError> {
+    fn cause(&self) -> Option<&dyn StdError> {
         match self.kind {
             ErrorKind::Term(ref e) => Some(e),
             ErrorKind::InternalIo(ref e) => Some(e),
@@ -95,7 +95,7 @@ impl From<EncoderError> for Error {
     fn from(err: EncoderError) -> Error {
         Error {
             kind: ErrorKind::Generic,
-            desc: err.description().to_string(),
+            desc: err.to_string(),
             detail: None,
         }
     }
@@ -105,7 +105,7 @@ impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error {
             kind: ErrorKind::Generic,
-            desc: err.description().into(),
+            desc: err.to_string().into(),
             detail: None,
         }
     }
@@ -114,7 +114,7 @@ impl From<IoError> for Error {
 impl From<term::Error> for Error {
     fn from(err: term::Error) -> Error {
         Error {
-            desc: err.description().into(),
+            desc: err.to_string().into(),
             kind: ErrorKind::Term(err),
             detail: None,
         }
@@ -135,7 +135,7 @@ impl From<SystemTimeError> for Error {
     fn from(err: SystemTimeError) -> Error {
         Error {
             kind: ErrorKind::Generic,
-            desc: err.description().into(),
+            desc: err.to_string().into(),
             detail: None,
         }
     }

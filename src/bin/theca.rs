@@ -94,20 +94,21 @@ Miscellaneous:
 ";
 
 fn theca_main() -> Result<()> {
-    let mut args: Args = try!(Docopt::new(USAGE)
-                                  .unwrap()
-                                  .version(Some(version()))
-                                  .decode());
-    try!(setup_args(&mut args));
+    let mut args: Args = Docopt::new(USAGE)
+                                    .unwrap()
+                                    .version(Some(version()))
+                                    .deserialize()?;
 
-    let (mut profile, profile_fingerprint) = try!(Profile::new(&args.flag_profile,
+    setup_args(&mut args)?;
+
+    let (mut profile, profile_fingerprint) = Profile::new(&args.flag_profile,
                                                                &args.flag_profile_folder,
                                                                &args.flag_key,
                                                                args.cmd_new_profile,
                                                                args.flag_encrypted,
-                                                               args.flag_yes));
+                                                               args.flag_yes)?;
 
-    try!(parse_cmds(&mut profile, &mut args, &profile_fingerprint));
+    parse_cmds(&mut profile, &mut args, &profile_fingerprint)?;
 
     Ok(())
 }

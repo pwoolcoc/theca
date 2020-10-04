@@ -14,14 +14,13 @@ use std::fs::{read_dir, File};
 use std::io::{Write, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::env::{var, home_dir};
+use std::env::{var};
 use std::cmp::Ordering;
 use std::iter::repeat;
 use std::time::UNIX_EPOCH;
 
 // time imports
-use time::get_time;
-use time::{strftime, strptime, at, Tm};
+use time::{OffsetDateTime, UtcOffset};
 
 // term imports
 use term::{self, stdout};
@@ -147,12 +146,12 @@ pub fn extract_status(none: bool, started: bool, urgent: bool) -> Result<Option<
 
 pub fn drop_to_editor(contents: &str) -> Result<String> {
     // setup temporary directory
-    let tmpdir = try!(TempDir::new("theca"));
+    let tmpdir = TempDir::new("theca")?;
     // setup temporary file to write/read
-    let tmppath = tmpdir.path().join(&format!("{}", get_time().sec)[..]);
-    let mut tmpfile = try!(File::create(&tmppath));
-    // let mut tmpfile = try!(File::open_mode(&tmppath, Open, ReadWrite));
-    try!(tmpfile.write_all(contents.as_bytes()));
+    let tmppath = tmpdir.path().join(&format!("{}", OffsetDateTime::timestamp(OffsetDateTime::now_utc()))[..]);
+    let mut tmpfile = File::create(&tmppath)?;
+    // let mut tmpfile = File::open_mode(&tmppath, Open, ReadWrite)?;
+    tmpfile.write_all(contents.as_bytes())?;
     let editor = match var("VISUAL") {
         Ok(v) => v,
         Err(_) => {
@@ -171,11 +170,11 @@ pub fn drop_to_editor(contents: &str) -> Result<String> {
     editor_command.stdout(Stdio::inherit());
     editor_command.stderr(Stdio::inherit());
     let editor_proc = editor_command.spawn();
-    if try!(editor_proc).wait().is_ok() {
+    if editor_proc?.wait().is_ok() {
         // finished editing, time to read `tmpfile` for the final output
-        let mut tmpfile = try!(File::open(&tmppath));
+        let mut tmpfile = File::open(&tmppath)?;
         let mut content = String::new();
-        try!(tmpfile.read_to_string(&mut content));
+        tmpfile.read_to_string(&mut content)?;
         Ok(content)
     } else {
         specific_fail_str!("the editor broke... I think")
@@ -183,44 +182,44 @@ pub fn drop_to_editor(contents: &str) -> Result<String> {
 }
 
 pub fn get_password() -> Result<String> {
-    let mut stdout = try!(get_stdout());
-    try!(write!(stdout, "Key: "));
-    try!(stdout.flush());
+    let mut stdout = get_stdout()?;
+    write!(stdout, "Key: ")?;
+    stdout.flush()?;
     let tty = c::istty(STDIN_FILENO);
     if tty {
-        try!(set_term_echo(false));
+        set_term_echo(false)?;
     }
     let stdin = stdin();
     let mut key = String::new();
     // since this only reads one line of stdin it could still feasibly
     // be used with `-` to set note body?
-    try!(stdin.read_line(&mut key));
+    stdin.read_line(&mut key)?;
     if tty {
-        try!(set_term_echo(true));
+        set_term_echo(true)?;
     }
-    try!(writeln!(stdout, ""));
+    writeln!(stdout, "")?;
     Ok(key.trim().to_string())
 }
 
 pub fn get_yn_input(message: &str) -> Result<bool> {
-    let stdout = try!(get_stdout());
+    let stdout = get_stdout()?;
     get_yn_input_with_output(stdout, message)
 }
 
-pub fn get_yn_input_with_output<W: Write>(mut terminal: Box<term::Terminal<Output = W>>,
+pub fn get_yn_input_with_output<W: Write>(mut terminal: Box<dyn term::Terminal<Output = W>>,
                                           message: &str)
                                           -> Result<bool> {
-    try!(write!(terminal, "{}", message));
-    try!(terminal.flush());
+    write!(terminal, "{}", message)?;
+    terminal.flush()?;
     let stdin = stdin();
     let answer;
     let yes = vec!["y", "Y", "yes", "YES", "Yes"];
     let no = vec!["n", "N", "no", "NO", "No"];
     loop {
-        try!(write!(terminal, "[y/n]# "));
-        try!(terminal.flush());
+        write!(terminal, "[y/n]# ")?;
+        terminal.flush()?;
         let mut input = String::new();
-        try!(stdin.read_line(&mut input));
+        stdin.read_line(&mut input)?;
         input = input.trim().to_string();
         if yes.iter().any(|n| &n[..] == input) {
             answer = true;
@@ -229,13 +228,13 @@ pub fn get_yn_input_with_output<W: Write>(mut terminal: Box<term::Terminal<Outpu
             answer = false;
             break;
         };
-        try!(writeln!(terminal, "invalid input."));
-        try!(terminal.flush());
+        writeln!(terminal, "invalid input.")?;
+        terminal.flush()?;
     }
     Ok(answer)
 }
 
-pub fn get_stdout() -> Result<Box<term::Terminal<Output = ::std::io::Stdout>>> {
+pub fn get_stdout() -> Result<Box<dyn term::Terminal<Output = ::std::io::Stdout>>> {
     match stdout() {
         Some(t) => Ok(t),
         None => specific_fail_str!("could not retrieve standard output."),
@@ -248,13 +247,13 @@ pub fn pretty_line(bold: &str, plain: &str, tty: bool) -> Result<()> {
         None => return specific_fail_str!("could not retrieve standard output."),
     };
     if tty {
-        try!(t.attr(Bold));
+        t.attr(Bold)?;
     }
-    try!(write!(t, "{}", bold.to_string()));
+    write!(t, "{}", bold.to_string())?;
     if tty {
-        try!(t.reset());
+        t.reset()?;
     }
-    try!(write!(t, "{}", plain));
+    write!(t, "{}", plain)?;
     Ok(())
 }
 
@@ -284,9 +283,9 @@ fn print_header(line_format: &LineFormat) -> Result<()> {
         format_field(&"status".to_string(), line_format.status_width, false) + &*column_seperator
     };
     if tty {
-        try!(t.attr(Bold));
+        t.attr(Bold)?;
     }
-    try!(write!(t,
+    write!(t,
                 "{1}{0}{2}{0}{3}{4}\n{5}\n",
                 column_seperator,
                 format_field(&"id".to_string(), line_format.id_width, false),
@@ -295,9 +294,9 @@ fn print_header(line_format: &LineFormat) -> Result<()> {
                 format_field(&"last touched".to_string(),
                              line_format.touched_width,
                              false),
-                header_seperator));
+                header_seperator)?;
     if tty {
-        try!(t.reset());
+        t.reset()?;
     }
     Ok(())
 }
@@ -337,12 +336,12 @@ pub fn sorted_print(notes: &mut Vec<Item>,
     if json {
         println!("{}", as_pretty_json(&notes[0..limit].to_vec()))
     } else {
-        let line_format = try!(LineFormat::new(&notes[0..limit], condensed, search_body));
+        let line_format = LineFormat::new(&notes[0..limit], condensed, search_body)?;
         if !condensed && !json {
-            try!(print_header(&line_format));
+            print_header(&line_format)?;
         }
         for n in notes[0..limit].iter() {
-            try!(n.print(&line_format, search_body));
+            n.print(&line_format, search_body)?;
         }
     };
 
@@ -351,35 +350,36 @@ pub fn sorted_print(notes: &mut Vec<Item>,
 
 pub fn profile_fingerprint<P: AsRef<Path>>(path: P) -> Result<u64> {
     let path = path.as_ref();
-    let metadata = try!(path.metadata());
-    let modified = try!(metadata.modified());
-    let since_epoch = try!(modified.duration_since(UNIX_EPOCH));
+    let metadata = path.metadata()?;
+    let modified = metadata.modified()?;
+    let since_epoch = modified.duration_since(UNIX_EPOCH)?;
     Ok(since_epoch.as_secs())
 }
 
 pub fn find_profile_folder(profile_folder: &str) -> Result<PathBuf> {
+    extern crate dirs;
     if !profile_folder.is_empty() {
         Ok(PathBuf::from(profile_folder))
     } else {
-        match home_dir() {
+        match dirs::home_dir() {
             Some(ref p) => Ok(p.join(".theca")),
             None => specific_fail_str!("failed to find your home directory"),
         }
     }
 }
 
-pub fn parse_last_touched(lt: &str) -> Result<Tm> {
-    Ok(at(try!(strptime(lt, DATEFMT)).to_timespec()))
+pub fn parse_last_touched(lt: &str) -> Result<OffsetDateTime> {
+    Ok(OffsetDateTime::parse(lt, DATEFMT)?)
 }
 
 pub fn localize_last_touched_string(lt: &str) -> Result<String> {
-    let t = try!(parse_last_touched(lt));
-    Ok(try!(strftime(DATEFMT_SHORT, &t)))
+    let t = parse_last_touched(lt)?;
+    Ok(t.to_offset(UtcOffset::local_offset_at(t)).format(DATEFMT_SHORT))
 }
 
 pub fn cmp_last_touched(a: &str, b: &str) -> Result<Ordering> {
-    let a_tm = try!(parse_last_touched(a));
-    let b_tm = try!(parse_last_touched(b));
+    let a_tm = parse_last_touched(a)?;
+    let b_tm = parse_last_touched(b)?;
     Ok(a_tm.cmp(&b_tm))
 }
 
@@ -427,11 +427,11 @@ pub fn path_to_profile_name(profile_path: &PathBuf) -> Result<String> {
 pub fn profiles_in_folder(folder: &Path) -> Result<()> {
     if folder.is_dir() {
         println!("# profiles in {}", folder.display());
-        for file in try!(read_dir(folder)) {
-            let file = try!(file);
+        for file in read_dir(folder)? {
+            let file = file?;
             let is_prof = validate_profile_from_path(&file.path());
             if is_prof.0 {
-                let mut msg = try!(path_to_profile_name(&file.path()));
+                let mut msg = path_to_profile_name(&file.path())?;
                 if is_prof.1 {
                     msg = format!("{} [encrypted]", msg);
                 }
